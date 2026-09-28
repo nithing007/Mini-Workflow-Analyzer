@@ -1,10 +1,8 @@
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 
 public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-
         WorkflowManager workflowManager = new WorkflowManager();
         WorkflowAnalyzer analyzer = new WorkflowAnalyzer();
         WorkflowExecutor executor = new WorkflowExecutor(workflowManager);
@@ -14,171 +12,171 @@ public class Main {
         System.out.println("=================================");
 
         System.out.print("Enter workflow name: ");
-        String workflowName = scanner.nextLine();
+        String workflowName = scanner.nextLine().trim();
+
+        if (workflowName.isEmpty()) {
+            System.out.println("Workflow name cannot be empty.");
+            return;
+        }
 
         System.out.print("Enter workflow description: ");
-        String description = scanner.nextLine();
+        String description = scanner.nextLine().trim();
 
-        int workflowId = workflowManager.createWorkflow(
-                workflowName,
-                description
-        );
+        int workflowId = workflowManager.createWorkflow(workflowName, description);
 
         if (workflowId == -1) {
             System.out.println("Failed to create workflow.");
-            scanner.close();
             return;
         }
 
         System.out.println("\nWorkflow created with ID: " + workflowId);
 
-        System.out.print("Enter number of tasks: ");
-        int taskCount = scanner.nextInt();
-        scanner.nextLine();
-
-        List<Integer> taskIds = new java.util.ArrayList<>();
+        int taskCount = readNonNegativeInt(scanner, "Enter number of tasks: ");
+        List<Integer> taskIds = new ArrayList<>();
 
         for (int i = 1; i <= taskCount; i++) {
-
             System.out.print("Enter task " + i + " name: ");
-            String taskName = scanner.nextLine();
+            String taskName = scanner.nextLine().trim();
 
-            int taskId = workflowManager.createTask(
-                    workflowId,
-                    taskName
-            );
+            if (taskName.isEmpty()) {
+                System.out.println("Task name cannot be empty.");
+                i--;
+                continue;
+            }
+
+            int taskId = workflowManager.createTask(workflowId, taskName);
 
             if (taskId == -1) {
                 System.out.println("Failed to create task.");
-                scanner.close();
                 return;
             }
 
             taskIds.add(taskId);
-
-            System.out.println(
-                    "Task created with ID: " + taskId
-            );
+            System.out.println("Task created with ID: " + taskId);
         }
 
-        System.out.print(
-                "\nEnter number of dependencies: "
-        );
+        if (taskIds.isEmpty()) {
+            System.out.println("\nNo tasks were added. Workflow cannot be executed.");
+            return;
+        }
 
-        int dependencyCount = scanner.nextInt();
+        int dependencyCount = readNonNegativeInt(scanner, "\nEnter number of dependencies: ");
+        Set<String> addedDependencies = new HashSet<>();
 
         for (int i = 1; i <= dependencyCount; i++) {
+            System.out.println("\nDependency " + i);
 
-            System.out.println(
-                    "\nDependency " + i
-            );
+            int taskId = readInt(scanner, "Enter task ID that depends on another task: ");
+            int dependsOnTaskId = readInt(scanner, "Enter dependency task ID: ");
 
-            System.out.print(
-                    "Enter task ID that depends on another task: "
-            );
+            if (!taskIds.contains(taskId) || !taskIds.contains(dependsOnTaskId)) {
+                System.out.println("Invalid task ID. Enter IDs from this workflow.");
+                i--;
+                continue;
+            }
 
-            int taskId = scanner.nextInt();
+            if (taskId == dependsOnTaskId) {
+                System.out.println("A task cannot depend on itself.");
+                i--;
+                continue;
+            }
 
-            System.out.print(
-                    "Enter dependency task ID: "
-            );
+            String dependencyKey = taskId + "-" + dependsOnTaskId;
 
-            int dependsOnTaskId = scanner.nextInt();
+            if (addedDependencies.contains(dependencyKey)) {
+                System.out.println("This dependency already exists.");
+                i--;
+                continue;
+            }
 
-            boolean added = workflowManager.addDependency(
-                    taskId,
-                    dependsOnTaskId
-            );
+            boolean added = workflowManager.addDependency(taskId, dependsOnTaskId);
 
             if (!added) {
-                System.out.println(
-                        "Failed to add dependency."
-                );
+                System.out.println("Failed to add dependency.");
+                i--;
             } else {
-                System.out.println(
-                        "Dependency added successfully."
-                );
+                addedDependencies.add(dependencyKey);
+                System.out.println("Dependency added successfully.");
             }
         }
 
-        List<Task> tasks =
-                workflowManager.getTasksByWorkflow(workflowId);
+        List<Task> tasks = workflowManager.getTasksByWorkflow(workflowId);
+        List<Dependency> dependencies = workflowManager.getDependenciesByWorkflow(workflowId);
 
-        List<Dependency> dependencies =
-                workflowManager.getDependenciesByWorkflow(workflowId);
+        if (tasks == null || dependencies == null) {
+            System.out.println("Failed to load workflow data.");
+            return;
+        }
 
         System.out.println("\n=================================");
         System.out.println("        WORKFLOW ANALYSIS");
         System.out.println("=================================");
 
-        boolean hasCycle =
-                analyzer.hasCycle(tasks, dependencies);
+        boolean hasCycle = analyzer.hasCycle(tasks, dependencies);
 
         if (hasCycle) {
+            System.out.println("Circular Dependency: YES");
+            System.out.println("Workflow cannot be executed.");
+            return;
+        }
 
-            System.out.println(
-                    "Circular Dependency: YES"
-            );
+        System.out.println("Circular Dependency: NO");
 
-            System.out.println(
-                    "Workflow cannot be executed."
-            );
+        List<Integer> executionOrder = analyzer.getExecutionOrder(tasks, dependencies);
 
-        } 
-        else {
+        if (executionOrder.isEmpty()) {
+            System.out.println("No valid execution order found.");
+            return;
+        }
 
-            System.out.println(
-                    "Circular Dependency: NO"
-            );
+        System.out.println("\nExecution Order:");
 
-            List<Integer> executionOrder =
-                    analyzer.getExecutionOrder(
-                            tasks,
-                            dependencies
-                    );
+        for (int i = 0; i < executionOrder.size(); i++) {
+            int taskId = executionOrder.get(i);
+            Task task = findTask(tasks, taskId);
 
-            System.out.println(
-                    "\nExecution Order:"
-            );
-
-            for (int i = 0; i < executionOrder.size(); i++) {
-
-                int taskId = executionOrder.get(i);
-
-                Task task = findTask(tasks, taskId);
-
-                System.out.println(
-                        (i + 1) + ". " +
-                        task.getTaskName()
-                );
+            if (task == null) {
+                System.out.println("Unable to find task with ID: " + taskId);
+                return;
             }
 
-            System.out.println(
-                    "\n================================="
-            );
-
-            System.out.println(
-                    "        WORKFLOW EXECUTION"
-            );
-
-            System.out.println(
-                    "================================="
-            );
-
-            executor.execute(
-                    tasks,
-                    executionOrder
-            );
+            System.out.println((i + 1) + ". " + task.getTaskName());
         }
-        scanner.close();
+
+        System.out.println("\n=================================");
+        System.out.println("        WORKFLOW EXECUTION");
+        System.out.println("=================================");
+
+        executor.execute(tasks, executionOrder);
     }
 
-    private static Task findTask(
-            List<Task> tasks,
-            int taskId) {
+    private static int readInt(Scanner scanner, String message) {
+        while (true) {
+            System.out.print(message);
+            String input = scanner.nextLine().trim();
 
+            try {
+                return Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Enter a valid integer.");
+            }
+        }
+    }
+
+    private static int readNonNegativeInt(Scanner scanner, String message) {
+        while (true) {
+            int number = readInt(scanner, message);
+
+            if (number >= 0) {
+                return number;
+            }
+
+            System.out.println("Enter zero or a positive number.");
+        }
+    }
+
+    private static Task findTask(List<Task> tasks, int taskId) {
         for (Task task : tasks) {
-
             if (task.getTaskId() == taskId) {
                 return task;
             }
