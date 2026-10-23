@@ -1,6 +1,17 @@
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
+import java.util.Set;
 
 public class Main {
+    private static final int MAX_TASKS = 10000;
+    private static final int MAX_DEPENDENCIES = 50000;
+    private static final int MAX_CONSECUTIVE_DB_FAILURES = 3;
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         WorkflowManager workflowManager = new WorkflowManager();
@@ -12,17 +23,22 @@ public class Main {
         System.out.println("=================================");
 
         System.out.print("Enter workflow name: ");
-        String workflowName = scanner.nextLine().trim();
+        String workflowName = readLine(scanner);
 
-        if (workflowName.isEmpty()) {
+        if (workflowName == null || workflowName.trim().isEmpty()) {
             System.out.println("Workflow name cannot be empty.");
             return;
         }
 
         System.out.print("Enter workflow description: ");
-        String description = scanner.nextLine().trim();
+        String description = readLine(scanner);
 
-        int workflowId = workflowManager.createWorkflow(workflowName, description);
+        if (description == null) {
+            System.out.println("Input stream exhausted.");
+            return;
+        }
+
+        int workflowId = workflowManager.createWorkflow(workflowName.trim(), description.trim());
 
         if (workflowId == -1) {
             System.out.println("Failed to create workflow.");
@@ -31,12 +47,24 @@ public class Main {
 
         System.out.println("\nWorkflow created with ID: " + workflowId);
 
-        int taskCount = readNonNegativeInt(scanner, "Enter number of tasks: ");
+        Integer taskCount = readCount(scanner, "Enter number of tasks: ", MAX_TASKS);
+        if (taskCount == null) {
+            return;
+        }
+
         List<Integer> taskIds = new ArrayList<>();
+        Set<Integer> validTaskIds = new HashSet<>();
 
         for (int i = 1; i <= taskCount; i++) {
             System.out.print("Enter task " + i + " name: ");
-            String taskName = scanner.nextLine().trim();
+            String taskName = readLine(scanner);
+
+            if (taskName == null) {
+                System.out.println("\nInput stream exhausted.");
+                return;
+            }
+
+            taskName = taskName.trim();
 
             if (taskName.isEmpty()) {
                 System.out.println("Task name cannot be empty.");
@@ -52,6 +80,7 @@ public class Main {
             }
 
             taskIds.add(taskId);
+            validTaskIds.add(taskId);
             System.out.println("Task created with ID: " + taskId);
         }
 
@@ -60,22 +89,34 @@ public class Main {
             return;
         }
 
-        int dependencyCount = readNonNegativeInt(scanner, "\nEnter number of dependencies: ");
+        Integer dependencyCount = readCount(scanner, "\nEnter number of dependencies: ", MAX_DEPENDENCIES);
+        if (dependencyCount == null) {
+            return;
+        }
+
         Set<String> addedDependencies = new HashSet<>();
+        int consecutiveFailures = 0;
 
         for (int i = 1; i <= dependencyCount; i++) {
             System.out.println("\nDependency " + i);
 
-            int taskId = readInt(scanner, "Enter task ID that depends on another task: ");
-            int dependsOnTaskId = readInt(scanner, "Enter dependency task ID: ");
+            Integer taskId = readInt(scanner, "Enter task ID that depends on another task: ");
+            if (taskId == null) {
+                return;
+            }
 
-            if (!taskIds.contains(taskId) || !taskIds.contains(dependsOnTaskId)) {
+            Integer dependsOnTaskId = readInt(scanner, "Enter dependency task ID: ");
+            if (dependsOnTaskId == null) {
+                return;
+            }
+
+            if (!validTaskIds.contains(taskId) || !validTaskIds.contains(dependsOnTaskId)) {
                 System.out.println("Invalid task ID. Enter IDs from this workflow.");
                 i--;
                 continue;
             }
 
-            if (taskId == dependsOnTaskId) {
+            if (taskId.equals(dependsOnTaskId)) {
                 System.out.println("A task cannot depend on itself.");
                 i--;
                 continue;
@@ -92,9 +133,16 @@ public class Main {
             boolean added = workflowManager.addDependency(taskId, dependsOnTaskId);
 
             if (!added) {
+                consecutiveFailures++;
                 System.out.println("Failed to add dependency.");
-                i--;
+                if (consecutiveFailures >= MAX_CONSECUTIVE_DB_FAILURES) {
+                    System.out.println("Multiple consecutive failures encountered. Skipping this dependency.");
+                    consecutiveFailures = 0;
+                } else {
+                    i--;
+                }
             } else {
+                consecutiveFailures = 0;
                 addedDependencies.add(dependencyKey);
                 System.out.println("Dependency added successfully.");
             }
@@ -131,9 +179,16 @@ public class Main {
 
         System.out.println("\nExecution Order:");
 
+        Map<Integer, Task> taskMap = new HashMap<>(tasks.size());
+        for (Task task : tasks) {
+            if (task != null) {
+                taskMap.put(task.getTaskId(), task);
+            }
+        }
+
         for (int i = 0; i < executionOrder.size(); i++) {
             int taskId = executionOrder.get(i);
-            Task task = findTask(tasks, taskId);
+            Task task = taskMap.get(taskId);
 
             if (task == null) {
                 System.out.println("Unable to find task with ID: " + taskId);
@@ -150,10 +205,31 @@ public class Main {
         executor.execute(tasks, executionOrder);
     }
 
-    private static int readInt(Scanner scanner, String message) {
+    private static String readLine(Scanner scanner) {
+        try {
+            if (!scanner.hasNextLine()) {
+                return null;
+            }
+            return scanner.nextLine();
+        } catch (IllegalStateException | NoSuchElementException e) {
+            return null;
+        }
+    }
+
+    private static Integer readInt(Scanner scanner, String message) {
         while (true) {
             System.out.print(message);
-            String input = scanner.nextLine().trim();
+            String input = readLine(scanner);
+            if (input == null) {
+                System.out.println("\nInput stream exhausted.");
+                return null;
+            }
+
+            input = input.trim();
+            if (input.isEmpty()) {
+                System.out.println("Invalid input. Enter a valid integer.");
+                continue;
+            }
 
             try {
                 return Integer.parseInt(input);
@@ -163,24 +239,22 @@ public class Main {
         }
     }
 
-    private static int readNonNegativeInt(Scanner scanner, String message) {
+    private static Integer readCount(Scanner scanner, String message, int max) {
         while (true) {
-            int number = readInt(scanner, message);
+            Integer number = readInt(scanner, message);
+            if (number == null) {
+                return null;
+            }
 
-            if (number >= 0) {
+            if (number >= 0 && number <= max) {
                 return number;
             }
 
-            System.out.println("Enter zero or a positive number.");
-        }
-    }
-
-    private static Task findTask(List<Task> tasks, int taskId) {
-        for (Task task : tasks) {
-            if (task.getTaskId() == taskId) {
-                return task;
+            if (number < 0) {
+                System.out.println("Enter zero or a positive number.");
+            } else {
+                System.out.println("Value is too large. Please enter a number between 0 and " + max + ".");
             }
         }
-        return null;
     }
 }

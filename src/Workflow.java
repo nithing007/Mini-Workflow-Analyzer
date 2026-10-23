@@ -5,13 +5,13 @@ public class Workflow {
 
     public Workflow(int workflowId, String workflowName, String description) {
         this.workflowId = workflowId;
-        this.workflowName = workflowName;
-        this.description = description;
+        this.workflowName = (workflowName != null && !workflowName.trim().isEmpty())
+                ? workflowName.trim() : "Unnamed Workflow";
+        this.description = description != null ? description.trim() : null;
     }
 
     public Workflow(String workflowName, String description) {
-        this.workflowName = workflowName;
-        this.description = description;
+        this(0, workflowName, description);
     }
 
     public int getWorkflowId() {
@@ -19,7 +19,9 @@ public class Workflow {
     }
 
     public void setWorkflowId(int workflowId) {
-        this.workflowId = workflowId;
+        if (workflowId > 0) {
+            this.workflowId = workflowId;
+        }
     }
 
     public String getWorkflowName() {
@@ -27,7 +29,9 @@ public class Workflow {
     }
 
     public void setWorkflowName(String workflowName) {
-        this.workflowName = workflowName;
+        if (workflowName != null && !workflowName.trim().isEmpty()) {
+            this.workflowName = workflowName.trim();
+        }
     }
 
     public String getDescription() {
@@ -35,7 +39,7 @@ public class Workflow {
     }
 
     public void setDescription(String description) {
-        this.description = description;
+        this.description = description != null ? description.trim() : null;
     }
 
     @Override

@@ -18,22 +18,26 @@ public class DatabaseManager {
             String username = properties.getProperty("db.username");
             String password = properties.getProperty("db.password");
 
-            Connection connection =
-                    DriverManager.getConnection(url, username, password);
+            if (url == null || url.trim().isEmpty()) {
+                System.out.println("Database configuration error: Missing required property 'db.url' in " + CONFIG_FILE);
+                return null;
+            }
 
-            System.out.println("Database connected successfully!");
+            if (username == null || username.trim().isEmpty()) {
+                System.out.println("Database configuration error: Missing required property 'db.username' in " + CONFIG_FILE);
+                return null;
+            }
 
-            return connection;
-        } 
-        catch (IOException e) {
+            if (password == null) {
+                System.out.println("Database configuration error: Missing required property 'db.password' in " + CONFIG_FILE);
+                return null;
+            }
 
-            System.out.println("Configuration file error!");
-            System.out.println("Error: " + e.getMessage());
-        } 
-        catch (SQLException e) {
-
-            System.out.println("Database connection failed!");
-            System.out.println("Error: " + e.getMessage());
+            return DriverManager.getConnection(url.trim(), username.trim(), password);
+        } catch (IOException e) {
+            System.out.println("Configuration file error: Unable to load " + CONFIG_FILE + " (" + e.getMessage() + ")");
+        } catch (SQLException e) {
+            System.out.println("Database connection failed: " + e.getMessage());
         }
         return null;
     }

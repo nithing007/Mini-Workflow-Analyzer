@@ -1,5 +1,7 @@
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class WorkflowExecutor {
@@ -25,19 +27,23 @@ public class WorkflowExecutor {
             return false;
         }
 
-        Set<Integer> taskIds = new HashSet<>();
+        Map<Integer, Task> taskMap = new HashMap<>(tasks.size());
 
         for (Task task : tasks) {
-            if (task == null || !taskIds.add(task.getTaskId())) {
-                System.out.println("Invalid or duplicate task.");
+            if (task == null) {
+                System.out.println("Invalid or null task in task list.");
+                return false;
+            }
+            if (taskMap.put(task.getTaskId(), task) != null) {
+                System.out.println("Duplicate task ID in task list: " + task.getTaskId());
                 return false;
             }
         }
 
-        Set<Integer> executedIds = new HashSet<>();
+        Set<Integer> executedIds = new HashSet<>(executionOrder.size());
 
         for (Integer taskId : executionOrder) {
-            if (taskId == null || !taskIds.contains(taskId) || !executedIds.add(taskId)) {
+            if (taskId == null || !taskMap.containsKey(taskId) || !executedIds.add(taskId)) {
                 System.out.println("Invalid execution order.");
                 return false;
             }
@@ -46,11 +52,13 @@ public class WorkflowExecutor {
         System.out.println("\nExecution started");
 
         for (int taskId : executionOrder) {
-            Task task = findTask(tasks, taskId);
+            Task task = taskMap.get(taskId);
 
             System.out.println("Executing: " + task.getTaskName());
 
             if (!workflowManager.updateTaskStatus(taskId, "RUNNING")) {
+                task.setStatus("FAILED");
+                workflowManager.updateTaskStatus(taskId, "FAILED");
                 System.out.println("Failed to start task: " + task.getTaskName());
                 return false;
             }
@@ -80,14 +88,5 @@ public class WorkflowExecutor {
 
         System.out.println("Execution completed successfully.");
         return true;
-    }
-
-    private Task findTask(List<Task> tasks, int taskId) {
-        for (Task task : tasks) {
-            if (task.getTaskId() == taskId) {
-                return task;
-            }
-        }
-        return null;
     }
 }

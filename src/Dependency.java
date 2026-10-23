@@ -10,8 +10,7 @@ public class Dependency {
     }
 
     public Dependency(int taskId, int dependsOnTaskId) {
-        this.taskId = taskId;
-        this.dependsOnTaskId = dependsOnTaskId;
+        this(0, taskId, dependsOnTaskId);
     }
 
     public int getDependencyId() {
@@ -19,7 +18,9 @@ public class Dependency {
     }
 
     public void setDependencyId(int dependencyId) {
-        this.dependencyId = dependencyId;
+        if (dependencyId > 0) {
+            this.dependencyId = dependencyId;
+        }
     }
 
     public int getTaskId() {
@@ -27,7 +28,9 @@ public class Dependency {
     }
 
     public void setTaskId(int taskId) {
-        this.taskId = taskId;
+        if (taskId > 0) {
+            this.taskId = taskId;
+        }
     }
 
     public int getDependsOnTaskId() {
@@ -35,7 +38,9 @@ public class Dependency {
     }
 
     public void setDependsOnTaskId(int dependsOnTaskId) {
-        this.dependsOnTaskId = dependsOnTaskId;
+        if (dependsOnTaskId > 0) {
+            this.dependsOnTaskId = dependsOnTaskId;
+        }
     }
 
     @Override

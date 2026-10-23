@@ -1,8 +1,15 @@
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class WorkflowManager {
+    private static final Set<String> VALID_STATUSES = Set.of("PENDING", "RUNNING", "COMPLETED", "FAILED");
+
     public int createWorkflow(String workflowName, String description) {
         if (workflowName == null || workflowName.trim().isEmpty()) {
             System.out.println("Workflow name cannot be empty.");
@@ -19,7 +26,7 @@ public class WorkflowManager {
 
             try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
                 statement.setString(1, workflowName.trim());
-                statement.setString(2, description);
+                statement.setString(2, description != null ? description.trim() : null);
                 statement.executeUpdate();
 
                 try (ResultSet resultSet = statement.getGeneratedKeys()) {
@@ -68,11 +75,12 @@ public class WorkflowManager {
 
     public boolean addDependency(int taskId, int dependsOnTaskId) {
         if (taskId <= 0 || dependsOnTaskId <= 0 || taskId == dependsOnTaskId) {
+            System.out.println("Invalid task IDs or self-dependency.");
             return false;
         }
 
-        String sql = "INSERT INTO dependencies (task_id, depends_on_task_id) " +
-                "SELECT ?, ? FROM tasks t JOIN tasks d ON t.workflow_id = d.workflow_id " +
+        String sql = "INSERT INTO dependencies (workflow_id, task_id, depends_on_task_id) " +
+                "SELECT t.workflow_id, ?, ? FROM tasks t JOIN tasks d ON t.workflow_id = d.workflow_id " +
                 "WHERE t.task_id = ? AND d.task_id = ? " +
                 "AND NOT EXISTS (SELECT 1 FROM dependencies WHERE task_id = ? AND depends_on_task_id = ?)";
 
@@ -99,17 +107,17 @@ public class WorkflowManager {
     }
 
     public List<Workflow> getAllWorkflows() {
-        List<Workflow> workflows = new ArrayList<>();
         String sql = "SELECT workflow_id, workflow_name, description FROM workflows";
 
         try (Connection connection = DatabaseManager.getConnection()) {
             if (connection == null) {
                 System.out.println("Database connection failed.");
-                return workflows;
+                return null;
             }
 
             try (PreparedStatement statement = connection.prepareStatement(sql);
                  ResultSet resultSet = statement.executeQuery()) {
+                List<Workflow> workflows = new ArrayList<>();
                 while (resultSet.next()) {
                     workflows.add(new Workflow(
                             resultSet.getInt("workflow_id"),
@@ -117,27 +125,33 @@ public class WorkflowManager {
                             resultSet.getString("description")
                     ));
                 }
+                return workflows;
             }
         } catch (SQLException e) {
             System.out.println("Error retrieving workflows: " + e.getMessage());
+            return null;
         }
-        return workflows;
     }
 
     public List<Task> getTasksByWorkflow(int workflowId) {
-        List<Task> tasks = new ArrayList<>();
+        if (workflowId <= 0) {
+            System.out.println("Invalid workflow ID.");
+            return null;
+        }
+
         String sql = "SELECT task_id, workflow_id, task_name, status FROM tasks WHERE workflow_id = ?";
 
         try (Connection connection = DatabaseManager.getConnection()) {
             if (connection == null) {
                 System.out.println("Database connection failed.");
-                return tasks;
+                return null;
             }
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setInt(1, workflowId);
 
                 try (ResultSet resultSet = statement.executeQuery()) {
+                    List<Task> tasks = new ArrayList<>();
                     while (resultSet.next()) {
                         tasks.add(new Task(
                                 resultSet.getInt("task_id"),
@@ -146,32 +160,34 @@ public class WorkflowManager {
                                 resultSet.getString("status")
                         ));
                     }
+                    return tasks;
                 }
             }
         } catch (SQLException e) {
             System.out.println("Error retrieving tasks: " + e.getMessage());
+            return null;
         }
-        return tasks;
     }
 
     public List<Dependency> getDependenciesByWorkflow(int workflowId) {
-        List<Dependency> dependencies = new ArrayList<>();
-        String sql = "SELECT d.dependency_id, d.task_id, d.depends_on_task_id " +
-                "FROM dependencies d " +
-                "JOIN tasks t ON d.task_id = t.task_id " +
-                "JOIN tasks p ON d.depends_on_task_id = p.task_id " +
-                "WHERE t.workflow_id = ? AND p.workflow_id = t.workflow_id";
+        if (workflowId <= 0) {
+            System.out.println("Invalid workflow ID.");
+            return null;
+        }
+
+        String sql = "SELECT dependency_id, task_id, depends_on_task_id FROM dependencies WHERE workflow_id = ?";
 
         try (Connection connection = DatabaseManager.getConnection()) {
             if (connection == null) {
                 System.out.println("Database connection failed.");
-                return dependencies;
+                return null;
             }
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setInt(1, workflowId);
 
                 try (ResultSet resultSet = statement.executeQuery()) {
+                    List<Dependency> dependencies = new ArrayList<>();
                     while (resultSet.next()) {
                         dependencies.add(new Dependency(
                                 resultSet.getInt("dependency_id"),
@@ -179,20 +195,22 @@ public class WorkflowManager {
                                 resultSet.getInt("depends_on_task_id")
                         ));
                     }
+                    return dependencies;
                 }
             }
         } catch (SQLException e) {
             System.out.println("Error retrieving dependencies: " + e.getMessage());
+            return null;
         }
-        return dependencies;
     }
 
     public boolean updateTaskStatus(int taskId, String status) {
-        if (taskId <= 0 || status == null ||
-                !List.of("PENDING", "RUNNING", "COMPLETED", "FAILED").contains(status)) {
+        if (taskId <= 0 || status == null || !VALID_STATUSES.contains(status.trim().toUpperCase())) {
+            System.out.println("Invalid task ID or status.");
             return false;
         }
 
+        String normalizedStatus = status.trim().toUpperCase();
         String sql = "UPDATE tasks SET status = ? WHERE task_id = ?";
 
         try (Connection connection = DatabaseManager.getConnection()) {
@@ -202,7 +220,7 @@ public class WorkflowManager {
             }
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setString(1, status);
+                statement.setString(1, normalizedStatus);
                 statement.setInt(2, taskId);
                 return statement.executeUpdate() > 0;
             }

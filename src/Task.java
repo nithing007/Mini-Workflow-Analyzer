@@ -1,4 +1,8 @@
+import java.util.Set;
+
 public class Task {
+    private static final Set<String> VALID_STATUSES = Set.of("PENDING", "RUNNING", "COMPLETED", "FAILED");
+
     private int taskId;
     private int workflowId;
     private String taskName;
@@ -7,14 +11,13 @@ public class Task {
     public Task(int taskId, int workflowId, String taskName, String status) {
         this.taskId = taskId;
         this.workflowId = workflowId;
-        this.taskName = taskName;
-        this.status = status;
+        this.taskName = (taskName != null && !taskName.trim().isEmpty()) ? taskName.trim() : "Unnamed Task";
+        this.status = (status != null && VALID_STATUSES.contains(status.trim().toUpperCase()))
+                ? status.trim().toUpperCase() : "PENDING";
     }
 
     public Task(int workflowId, String taskName) {
-        this.workflowId = workflowId;
-        this.taskName = taskName;
-        this.status = "PENDING";
+        this(0, workflowId, taskName, "PENDING");
     }
 
     public int getTaskId() {
@@ -22,7 +25,9 @@ public class Task {
     }
 
     public void setTaskId(int taskId) {
-        this.taskId = taskId;
+        if (taskId > 0) {
+            this.taskId = taskId;
+        }
     }
 
     public int getWorkflowId() {
@@ -30,7 +35,9 @@ public class Task {
     }
 
     public void setWorkflowId(int workflowId) {
-        this.workflowId = workflowId;
+        if (workflowId > 0) {
+            this.workflowId = workflowId;
+        }
     }
 
     public String getTaskName() {
@@ -38,7 +45,9 @@ public class Task {
     }
 
     public void setTaskName(String taskName) {
-        this.taskName = taskName;
+        if (taskName != null && !taskName.trim().isEmpty()) {
+            this.taskName = taskName.trim();
+        }
     }
 
     public String getStatus() {
@@ -46,7 +55,9 @@ public class Task {
     }
 
     public void setStatus(String status) {
-        this.status = status;
+        if (status != null && VALID_STATUSES.contains(status.trim().toUpperCase())) {
+            this.status = status.trim().toUpperCase();
+        }
     }
 
     @Override
