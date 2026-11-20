@@ -1,3 +1,4 @@
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -11,24 +12,21 @@ public class WorkflowExecutor {
         this.workflowManager = workflowManager;
     }
 
-    public boolean execute(List<Task> tasks, List<Integer> executionOrder) {
-        if (tasks == null || executionOrder == null || workflowManager == null) {
+    public boolean execute(List<Task> tasks, List<Dependency> dependencies, List<Integer> executionOrder) {
+        if (tasks == null || dependencies == null || executionOrder == null || workflowManager == null) {
             System.out.println("Invalid workflow data.");
             return false;
         }
-
         if (tasks.isEmpty() || executionOrder.isEmpty()) {
             System.out.println("Workflow cannot be executed.");
             return false;
         }
-
         if (executionOrder.size() != tasks.size()) {
             System.out.println("Invalid execution order.");
             return false;
         }
 
         Map<Integer, Task> taskMap = new HashMap<>(tasks.size());
-
         for (Task task : tasks) {
             if (task == null) {
                 System.out.println("Invalid or null task in task list.");
@@ -40,11 +38,28 @@ public class WorkflowExecutor {
             }
         }
 
-        Set<Integer> executedIds = new HashSet<>(executionOrder.size());
-
-        for (Integer taskId : executionOrder) {
-            if (taskId == null || !taskMap.containsKey(taskId) || !executedIds.add(taskId)) {
+        Map<Integer, Integer> positions = new HashMap<>(executionOrder.size());
+        for (int i = 0; i < executionOrder.size(); i++) {
+            Integer taskId = executionOrder.get(i);
+            if (taskId == null || !taskMap.containsKey(taskId) || positions.put(taskId, i) != null) {
                 System.out.println("Invalid execution order.");
+                return false;
+            }
+        }
+
+        for (Dependency dependency : dependencies) {
+            if (dependency == null) {
+                System.out.println("Invalid dependency data.");
+                return false;
+            }
+            int taskId = dependency.getTaskId();
+            int prerequisiteId = dependency.getDependsOnTaskId();
+            if (!positions.containsKey(taskId) || !positions.containsKey(prerequisiteId)) {
+                System.out.println("Dependency references an invalid task ID.");
+                return false;
+            }
+            if (positions.get(prerequisiteId) >= positions.get(taskId)) {
+                System.out.println("Invalid dependency execution order. Task " + prerequisiteId + " must execute before task " + taskId + ".");
                 return false;
             }
         }
@@ -53,7 +68,6 @@ public class WorkflowExecutor {
 
         for (int taskId : executionOrder) {
             Task task = taskMap.get(taskId);
-
             System.out.println("Executing: " + task.getTaskName());
 
             if (!workflowManager.updateTaskStatus(taskId, "RUNNING")) {

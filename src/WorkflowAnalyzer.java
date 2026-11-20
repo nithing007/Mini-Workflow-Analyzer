@@ -1,3 +1,4 @@
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,7 +11,6 @@ import java.util.Queue;
 import java.util.Set;
 
 public class WorkflowAnalyzer {
-
     private static class AnalysisResult {
         final boolean hasCycle;
         final List<Integer> executionOrder;
@@ -23,10 +23,6 @@ public class WorkflowAnalyzer {
         }
     }
 
-    private List<Task> cachedTasks;
-    private List<Dependency> cachedDependencies;
-    private AnalysisResult cachedResult;
-
     public boolean hasCycle(List<Task> tasks, List<Dependency> dependencies) {
         return analyze(tasks, dependencies).hasCycle;
     }
@@ -37,28 +33,23 @@ public class WorkflowAnalyzer {
 
     public Map<Integer, List<Integer>> buildGraph(List<Task> tasks, List<Dependency> dependencies) {
         Map<Integer, List<Integer>> graph = new LinkedHashMap<>();
-
         if (tasks == null) {
             return graph;
         }
-
         for (Task task : tasks) {
             if (task != null) {
                 graph.putIfAbsent(task.getTaskId(), new ArrayList<>());
             }
         }
-
         if (dependencies == null) {
             return graph;
         }
-
         for (Dependency dependency : dependencies) {
             if (dependency == null) {
                 continue;
             }
             int taskId = dependency.getTaskId();
             int dependsOnTaskId = dependency.getDependsOnTaskId();
-
             if (graph.containsKey(dependsOnTaskId) && graph.containsKey(taskId)) {
                 List<Integer> dependents = graph.get(dependsOnTaskId);
                 if (!dependents.contains(taskId)) {
@@ -66,19 +57,12 @@ public class WorkflowAnalyzer {
                 }
             }
         }
-
         return graph;
     }
 
     private AnalysisResult analyze(List<Task> tasks, List<Dependency> dependencies) {
-        if (tasks == cachedTasks && dependencies == cachedDependencies && cachedResult != null) {
-            return cachedResult;
-        }
-
         if (tasks == null || dependencies == null || tasks.isEmpty()) {
-            AnalysisResult result = new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-            cache(tasks, dependencies, result);
-            return result;
+            return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
         }
 
         Set<Integer> taskIds = new HashSet<>(tasks.size());
@@ -87,15 +71,11 @@ public class WorkflowAnalyzer {
 
         for (Task task : tasks) {
             if (task == null) {
-                AnalysisResult result = new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-                cache(tasks, dependencies, result);
-                return result;
+                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
             }
             int id = task.getTaskId();
             if (!taskIds.add(id)) {
-                AnalysisResult result = new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-                cache(tasks, dependencies, result);
-                return result;
+                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
             }
             graph.put(id, new ArrayList<>());
             inDegree.put(id, 0);
@@ -106,9 +86,7 @@ public class WorkflowAnalyzer {
 
         for (Dependency dependency : dependencies) {
             if (dependency == null) {
-                AnalysisResult result = new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-                cache(tasks, dependencies, result);
-                return result;
+                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
             }
 
             int dependentTaskId = dependency.getTaskId();
@@ -120,9 +98,7 @@ public class WorkflowAnalyzer {
             }
 
             if (!taskIds.contains(dependentTaskId) || !taskIds.contains(prereqTaskId)) {
-                AnalysisResult result = new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-                cache(tasks, dependencies, result);
-                return result;
+                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
             }
 
             long edgeKey = (((long) prereqTaskId & 0xFFFFFFFFL) << 32) | (dependentTaskId & 0xFFFFFFFFL);
@@ -133,9 +109,7 @@ public class WorkflowAnalyzer {
         }
 
         if (hasSelfDependency) {
-            AnalysisResult result = new AnalysisResult(true, Collections.emptyList(), graph);
-            cache(tasks, dependencies, result);
-            return result;
+            return new AnalysisResult(true, Collections.emptyList(), graph);
         }
 
         Queue<Integer> queue = new ArrayDeque<>();
@@ -162,19 +136,9 @@ public class WorkflowAnalyzer {
         }
 
         if (executionOrder.size() != tasks.size()) {
-            AnalysisResult result = new AnalysisResult(true, Collections.emptyList(), graph);
-            cache(tasks, dependencies, result);
-            return result;
+            return new AnalysisResult(true, Collections.emptyList(), graph);
         }
 
-        AnalysisResult result = new AnalysisResult(false, executionOrder, graph);
-        cache(tasks, dependencies, result);
-        return result;
-    }
-
-    private void cache(List<Task> tasks, List<Dependency> dependencies, AnalysisResult result) {
-        this.cachedTasks = tasks;
-        this.cachedDependencies = dependencies;
-        this.cachedResult = result;
+        return new AnalysisResult(false, executionOrder, graph);
     }
 }
