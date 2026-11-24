@@ -1,5 +1,4 @@
 import java.util.Set;
-
 public class Task {
     private static final Set<String> VALID_STATUSES = Set.of("PENDING", "RUNNING", "COMPLETED", "FAILED");
 

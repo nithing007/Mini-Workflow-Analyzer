@@ -10,7 +10,6 @@ import java.util.Set;
 public class Main {
     private static final int MAX_TASKS = 10000;
     private static final int MAX_DEPENDENCIES = 50000;
-    private static final int MAX_CONSECUTIVE_DB_FAILURES = 3;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -24,33 +23,38 @@ public class Main {
 
         System.out.print("Enter workflow name: ");
         String workflowName = readLine(scanner);
-
-        if (workflowName == null || workflowName.trim().isEmpty()) {
-            System.out.println("Workflow name cannot be empty.");
+        if (workflowName == null || workflowName.trim().isEmpty() || workflowName.trim().length() > 100) {
+            System.out.println("Workflow name must contain 1-100 characters.");
             return;
         }
 
         System.out.print("Enter workflow description: ");
         String description = readLine(scanner);
-
         if (description == null) {
             System.out.println("Input stream exhausted.");
             return;
         }
-
-        int workflowId = workflowManager.createWorkflow(workflowName.trim(), description.trim());
-
-        if (workflowId == -1) {
-            System.out.println("Failed to create workflow.");
+        if (description.trim().length() > 255) {
+            System.out.println("Description cannot exceed 255 characters.");
             return;
         }
-
-        System.out.println("\nWorkflow created with ID: " + workflowId);
 
         Integer taskCount = readCount(scanner, "Enter number of tasks: ", MAX_TASKS);
         if (taskCount == null) {
             return;
         }
+        if (taskCount == 0) {
+            System.out.println("At least one task is required.");
+            return;
+        }
+
+        int workflowId = workflowManager.createWorkflow(workflowName.trim(), description.trim());
+        if (workflowId <= 0) {
+            System.out.println("Failed to create workflow.");
+            return;
+        }
+
+        System.out.println("\nWorkflow created with ID: " + workflowId);
 
         List<Integer> taskIds = new ArrayList<>();
         Set<Integer> validTaskIds = new HashSet<>();
@@ -58,24 +62,21 @@ public class Main {
         for (int i = 1; i <= taskCount; i++) {
             System.out.print("Enter task " + i + " name: ");
             String taskName = readLine(scanner);
-
             if (taskName == null) {
                 System.out.println("\nInput stream exhausted.");
                 return;
             }
 
             taskName = taskName.trim();
-
-            if (taskName.isEmpty()) {
-                System.out.println("Task name cannot be empty.");
+            if (taskName.isEmpty() || taskName.length() > 100) {
+                System.out.println("Task name must contain 1-100 characters.");
                 i--;
                 continue;
             }
 
             int taskId = workflowManager.createTask(workflowId, taskName);
-
-            if (taskId == -1) {
-                System.out.println("Failed to create task.");
+            if (taskId <= 0) {
+                System.out.println("Failed to create task. Workflow setup aborted.");
                 return;
             }
 
@@ -84,18 +85,16 @@ public class Main {
             System.out.println("Task created with ID: " + taskId);
         }
 
-        if (taskIds.isEmpty()) {
-            System.out.println("\nNo tasks were added. Workflow cannot be executed.");
-            return;
-        }
-
         Integer dependencyCount = readCount(scanner, "\nEnter number of dependencies: ", MAX_DEPENDENCIES);
         if (dependencyCount == null) {
             return;
         }
+        if (dependencyCount > (long) taskCount * (taskCount - 1)) {
+            System.out.println("Dependency count exceeds the maximum possible unique dependencies.");
+            return;
+        }
 
         Set<String> addedDependencies = new HashSet<>();
-        int consecutiveFailures = 0;
 
         for (int i = 1; i <= dependencyCount; i++) {
             System.out.println("\nDependency " + i);
@@ -123,29 +122,19 @@ public class Main {
             }
 
             String dependencyKey = taskId + "-" + dependsOnTaskId;
-
             if (addedDependencies.contains(dependencyKey)) {
                 System.out.println("This dependency already exists.");
                 i--;
                 continue;
             }
 
-            boolean added = workflowManager.addDependency(taskId, dependsOnTaskId);
-
-            if (!added) {
-                consecutiveFailures++;
-                System.out.println("Failed to add dependency.");
-                if (consecutiveFailures >= MAX_CONSECUTIVE_DB_FAILURES) {
-                    System.out.println("Multiple consecutive failures encountered. Skipping this dependency.");
-                    consecutiveFailures = 0;
-                } else {
-                    i--;
-                }
-            } else {
-                consecutiveFailures = 0;
-                addedDependencies.add(dependencyKey);
-                System.out.println("Dependency added successfully.");
+            if (!workflowManager.addDependency(taskId, dependsOnTaskId)) {
+                System.out.println("Failed to add dependency. Workflow setup aborted.");
+                return;
             }
+
+            addedDependencies.add(dependencyKey);
+            System.out.println("Dependency added successfully.");
         }
 
         List<Task> tasks = workflowManager.getTasksByWorkflow(workflowId);
@@ -156,11 +145,22 @@ public class Main {
             return;
         }
 
+        if (tasks.isEmpty() || tasks.size() != taskCount) {
+            System.out.println("Workflow contains missing or invalid task data.");
+            return;
+        }
+
+        if (!validateWorkflowData(tasks, dependencies)) {
+            System.out.println("Invalid workflow data detected.");
+            return;
+        }
+
         System.out.println("\n=================================");
         System.out.println("        WORKFLOW ANALYSIS");
         System.out.println("=================================");
 
         boolean hasCycle = analyzer.hasCycle(tasks, dependencies);
+        List<Integer> executionOrder = analyzer.getExecutionOrder(tasks, dependencies);
 
         if (hasCycle) {
             System.out.println("Circular Dependency: YES");
@@ -170,31 +170,23 @@ public class Main {
 
         System.out.println("Circular Dependency: NO");
 
-        List<Integer> executionOrder = analyzer.getExecutionOrder(tasks, dependencies);
-
-        if (executionOrder.isEmpty()) {
+        if (executionOrder.size() != tasks.size()) {
             System.out.println("No valid execution order found.");
             return;
         }
 
-        System.out.println("\nExecution Order:");
-
         Map<Integer, Task> taskMap = new HashMap<>(tasks.size());
         for (Task task : tasks) {
-            if (task != null) {
-                taskMap.put(task.getTaskId(), task);
-            }
+            taskMap.put(task.getTaskId(), task);
         }
 
+        System.out.println("\nExecution Order:");
         for (int i = 0; i < executionOrder.size(); i++) {
-            int taskId = executionOrder.get(i);
-            Task task = taskMap.get(taskId);
-
+            Task task = taskMap.get(executionOrder.get(i));
             if (task == null) {
-                System.out.println("Unable to find task with ID: " + taskId);
+                System.out.println("Invalid execution order.");
                 return;
             }
-
             System.out.println((i + 1) + ". " + task.getTaskName());
         }
 
@@ -202,7 +194,41 @@ public class Main {
         System.out.println("        WORKFLOW EXECUTION");
         System.out.println("=================================");
 
-        executor.execute(tasks, executionOrder);
+        executor.execute(tasks, dependencies, executionOrder);
+    }
+
+    private static boolean validateWorkflowData(List<Task> tasks, List<Dependency> dependencies) {
+        if (tasks == null || dependencies == null) {
+            return false;
+        }
+
+        Set<Integer> taskIds = new HashSet<>();
+        for (Task task : tasks) {
+            if (task == null || task.getTaskId() <= 0 || !taskIds.add(task.getTaskId())) {
+                return false;
+            }
+        }
+
+        Set<String> dependencyKeys = new HashSet<>();
+        for (Dependency dependency : dependencies) {
+            if (dependency == null) {
+                return false;
+            }
+
+            int taskId = dependency.getTaskId();
+            int prerequisiteId = dependency.getDependsOnTaskId();
+
+            if (taskId <= 0 || prerequisiteId <= 0 || taskId == prerequisiteId ||
+                    !taskIds.contains(taskId) || !taskIds.contains(prerequisiteId)) {
+                return false;
+            }
+
+            String key = taskId + "-" + prerequisiteId;
+            if (!dependencyKeys.add(key)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String readLine(Scanner scanner) {
@@ -250,11 +276,9 @@ public class Main {
                 return number;
             }
 
-            if (number < 0) {
-                System.out.println("Enter zero or a positive number.");
-            } else {
-                System.out.println("Value is too large. Please enter a number between 0 and " + max + ".");
-            }
+            System.out.println(number < 0
+                    ? "Enter zero or a positive number."
+                    : "Value is too large. Enter a number between 0 and " + max + ".");
         }
     }
 }

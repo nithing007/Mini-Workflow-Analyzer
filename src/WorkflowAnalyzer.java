@@ -1,4 +1,3 @@
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,58 +10,67 @@ import java.util.Queue;
 import java.util.Set;
 
 public class WorkflowAnalyzer {
-    private static class AnalysisResult {
-        final boolean hasCycle;
-        final List<Integer> executionOrder;
-        final Map<Integer, List<Integer>> graph;
+    public enum AnalysisStatus {
+        VALID,
+        CYCLE_DETECTED,
+        INVALID_DATA
+    }
 
-        AnalysisResult(boolean hasCycle, List<Integer> executionOrder, Map<Integer, List<Integer>> graph) {
-            this.hasCycle = hasCycle;
-            this.executionOrder = executionOrder;
-            this.graph = graph;
+    public static class AnalysisResult {
+        private final AnalysisStatus status;
+        private final List<Integer> executionOrder;
+        private final Map<Integer, List<Integer>> graph;
+
+        private AnalysisResult(AnalysisStatus status, List<Integer> executionOrder, Map<Integer, List<Integer>> graph) {
+            this.status = status;
+            this.executionOrder = Collections.unmodifiableList(new ArrayList<>(executionOrder));
+            Map<Integer, List<Integer>> immutableGraph = new LinkedHashMap<>();
+            for (Map.Entry<Integer, List<Integer>> entry : graph.entrySet()) {
+                immutableGraph.put(entry.getKey(), Collections.unmodifiableList(new ArrayList<>(entry.getValue())));
+            }
+            this.graph = Collections.unmodifiableMap(immutableGraph);
+        }
+
+        public AnalysisStatus getStatus() {
+            return status;
+        }
+
+        public List<Integer> getExecutionOrder() {
+            return executionOrder;
+        }
+
+        public Map<Integer, List<Integer>> getGraph() {
+            return graph;
+        }
+
+        public boolean hasCycle() {
+            return status == AnalysisStatus.CYCLE_DETECTED;
+        }
+
+        public boolean isValid() {
+            return status == AnalysisStatus.VALID;
         }
     }
 
     public boolean hasCycle(List<Task> tasks, List<Dependency> dependencies) {
-        return analyze(tasks, dependencies).hasCycle;
+        return analyze(tasks, dependencies).hasCycle();
     }
 
     public List<Integer> getExecutionOrder(List<Task> tasks, List<Dependency> dependencies) {
-        return new ArrayList<>(analyze(tasks, dependencies).executionOrder);
+        return new ArrayList<>(analyze(tasks, dependencies).getExecutionOrder());
     }
 
     public Map<Integer, List<Integer>> buildGraph(List<Task> tasks, List<Dependency> dependencies) {
-        Map<Integer, List<Integer>> graph = new LinkedHashMap<>();
-        if (tasks == null) {
-            return graph;
+        AnalysisResult result = analyze(tasks, dependencies);
+        if (result.getStatus() == AnalysisStatus.INVALID_DATA) {
+            return Collections.emptyMap();
         }
-        for (Task task : tasks) {
-            if (task != null) {
-                graph.putIfAbsent(task.getTaskId(), new ArrayList<>());
-            }
-        }
-        if (dependencies == null) {
-            return graph;
-        }
-        for (Dependency dependency : dependencies) {
-            if (dependency == null) {
-                continue;
-            }
-            int taskId = dependency.getTaskId();
-            int dependsOnTaskId = dependency.getDependsOnTaskId();
-            if (graph.containsKey(dependsOnTaskId) && graph.containsKey(taskId)) {
-                List<Integer> dependents = graph.get(dependsOnTaskId);
-                if (!dependents.contains(taskId)) {
-                    dependents.add(taskId);
-                }
-            }
-        }
-        return graph;
+        return result.getGraph();
     }
 
-    private AnalysisResult analyze(List<Task> tasks, List<Dependency> dependencies) {
+    public AnalysisResult analyze(List<Task> tasks, List<Dependency> dependencies) {
         if (tasks == null || dependencies == null || tasks.isEmpty()) {
-            return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
+            return invalidResult();
         }
 
         Set<Integer> taskIds = new HashSet<>(tasks.size());
@@ -70,49 +78,43 @@ public class WorkflowAnalyzer {
         Map<Integer, Integer> inDegree = new HashMap<>(tasks.size());
 
         for (Task task : tasks) {
-            if (task == null) {
-                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
+            if (task == null || task.getTaskId() <= 0 || !taskIds.add(task.getTaskId())) {
+                return invalidResult();
             }
             int id = task.getTaskId();
-            if (!taskIds.add(id)) {
-                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
-            }
             graph.put(id, new ArrayList<>());
             inDegree.put(id, 0);
         }
 
         Set<Long> seenEdges = new HashSet<>(dependencies.size());
-        boolean hasSelfDependency = false;
 
         for (Dependency dependency : dependencies) {
             if (dependency == null) {
-                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
+                return invalidResult();
             }
 
             int dependentTaskId = dependency.getTaskId();
-            int prereqTaskId = dependency.getDependsOnTaskId();
+            int prerequisiteTaskId = dependency.getDependsOnTaskId();
 
-            if (dependentTaskId == prereqTaskId) {
-                hasSelfDependency = true;
-                continue;
+            if (dependentTaskId <= 0 || prerequisiteTaskId <= 0 ||
+                    dependentTaskId == prerequisiteTaskId ||
+                    !taskIds.contains(dependentTaskId) ||
+                    !taskIds.contains(prerequisiteTaskId)) {
+                return invalidResult();
             }
 
-            if (!taskIds.contains(dependentTaskId) || !taskIds.contains(prereqTaskId)) {
-                return new AnalysisResult(false, Collections.emptyList(), Collections.emptyMap());
+            long edgeKey = ((long) prerequisiteTaskId << 32) | (dependentTaskId & 0xFFFFFFFFL);
+
+            if (!seenEdges.add(edgeKey)) {
+                return invalidResult();
             }
 
-            long edgeKey = (((long) prereqTaskId & 0xFFFFFFFFL) << 32) | (dependentTaskId & 0xFFFFFFFFL);
-            if (seenEdges.add(edgeKey)) {
-                graph.get(prereqTaskId).add(dependentTaskId);
-                inDegree.put(dependentTaskId, inDegree.get(dependentTaskId) + 1);
-            }
-        }
-
-        if (hasSelfDependency) {
-            return new AnalysisResult(true, Collections.emptyList(), graph);
+            graph.get(prerequisiteTaskId).add(dependentTaskId);
+            inDegree.put(dependentTaskId, inDegree.get(dependentTaskId) + 1);
         }
 
         Queue<Integer> queue = new ArrayDeque<>();
+
         for (Task task : tasks) {
             int id = task.getTaskId();
             if (inDegree.get(id) == 0) {
@@ -129,6 +131,7 @@ public class WorkflowAnalyzer {
             for (int neighbor : graph.get(current)) {
                 int updatedInDegree = inDegree.get(neighbor) - 1;
                 inDegree.put(neighbor, updatedInDegree);
+
                 if (updatedInDegree == 0) {
                     queue.offer(neighbor);
                 }
@@ -136,9 +139,13 @@ public class WorkflowAnalyzer {
         }
 
         if (executionOrder.size() != tasks.size()) {
-            return new AnalysisResult(true, Collections.emptyList(), graph);
+            return new AnalysisResult(AnalysisStatus.CYCLE_DETECTED, Collections.emptyList(), graph);
         }
 
-        return new AnalysisResult(false, executionOrder, graph);
+        return new AnalysisResult(AnalysisStatus.VALID, executionOrder, graph);
+    }
+
+    private AnalysisResult invalidResult() {
+        return new AnalysisResult(AnalysisStatus.INVALID_DATA, Collections.emptyList(), Collections.emptyMap());
     }
 }

@@ -1,4 +1,3 @@
-
 CREATE DATABASE IF NOT EXISTS mini_workflow_analyzer;
 USE mini_workflow_analyzer;
 
